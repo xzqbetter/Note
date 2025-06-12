@@ -1,0 +1,82 @@
+**`Queue` 队列**：在一端插入元素（末尾），在另一端移除元素（头部）
+
+- 通常遵循 FIFO 原则
+- 提供了两种方法：一种在失败时抛出异常，一种返回特殊值（false、null）
+
+**`Deque` 双端队列**：继承自 Queue
+
+- 具有 FIFO（先进先出） 或者 LIFO（后进先出）原则
+
+常见实现类：
+
+`LinkedList`：双向链表结构（双端队列），同时支持 Queue 和 Deque 接口
+
+`ArrayDeque`：数组结构（双端队列），同时支持 Queue 和 Deque 接口
+
+`PriorityQueue`：基于优先级的队列
+
+`ConcurrentLinkedQueue`：线程安全的非阻塞队列
+
+`BlockingQueue`：线程安全的阻塞队列，具体实现有 ArrayBlockingQueue、LinkedBlockingQueue
+
+
+
+# Queue
+
+**`Queue` 队列**：在一端插入元素（末尾），在另一端移除元素（头部）
+
+- 通常遵循 FIFO 原则
+
+- 提供了两种方法：一种在失败时抛出异常，一种返回特殊值（false、null）
+
+  抛出异常：`add()`、`remove()`、`element()`
+
+  返回特殊值：`offer()`、`poll()`、`peek()`
+
+  其他常用方法：`size()`、`isEmpty`、`contains()`、`clear()`
+
+```java
+public interface Queue<E> extends Collection<E> {
+    boolean add(E e);
+    boolean offer(E e);
+    
+    E remove();
+    E poll();
+
+    E element();
+    E peek();
+}
+```
+
+<br/>
+
+----
+
+<br/>
+
+# Deque
+
+**`Deque` 双端队列**：继承自 Queue
+
+- 具有 FIFO（先进先出） 或者 LIFO（后进先出）原则
+
+```java
+public interface Deque<E> extends Queue<E> {
+    void addFirst(E e);
+    void addLast(E e);
+    boolean offerFirst(E e);
+    boolean offerLast(E e);
+    
+    E removeFirst();
+    E removeLast();
+    E pollFirst();
+    E pollLast();
+    
+    E getFirst();
+    E getLast();
+    E peekFirst();
+    E peekLast();
+}
+
+```
+
