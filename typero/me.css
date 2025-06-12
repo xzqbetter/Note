@@ -3,8 +3,9 @@
     --control-text-color: #777;
 }
 
-@include-when-export url(https://fonts.loli.net/css?family=Open+Sans:400italic,700italic,700,400&subset=latin,latin-ext);
+@include-when-export url(https://fonts.googleapis.com/css?family=Open+Sans:400italic,700italic,700,400&subset=latin,latin-ext);
 
+/* open-sans-regular - latin-ext_latin */
 @font-face {
     font-family: 'Open Sans';
     font-style: normal;
@@ -38,40 +39,24 @@
   }
 
 @font-face {
-    font-family: 'Open Sans';
-    font-style: normal;
-    font-weight: normal;
-    src: local('Open Sans Regular'),url('./github/400.woff') format('woff');
-}
-
-@font-face {
-    font-family: 'Open Sans';
-    font-style: italic;
-    font-weight: normal;
-    src: local('Open Sans Italic'),url('./github/400i.woff') format('woff');
-}
-
-@font-face {
-    font-family: 'Open Sans';
-    font-style: normal;
-    font-weight: bold;
-    src: local('Open Sans Bold'),url('./github/700.woff') format('woff');
-}
-
-@font-face {
-    font-family: 'Open Sans';
-    font-style: italic;
-    font-weight: bold;
-    src: local('Open Sans Bold Italic'),url('./github/700i.woff') format('woff');
-}
-
-@font-face {
     font-family: 'HanYi';
     font-style: normal;
     font-weight: normal;
     src: local('HYZhengYuan-65W'),url('./me/HYZhengYuan-65W.ttf') format('woff');
 }
 
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    font-family: "Open Sans","Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+    color: rgb(51, 51, 51);
+    line-height: 1.6;
+}
+
+/*
 html {
     /* font-size: 16px; */
     font-weight: 400;
@@ -83,17 +68,20 @@ body {
     background-color: #f9f8f6;
     line-height: 1.6;
     font-size: 16px;
-    font-family: 'Open Sans',  'HanYi', "HYZhengYuan-65W", "Clear Sans", PingFang SC, Arial, Menlo, Monaco, 'Courier New', monospace;
+    font-family: 'Open Sans', 'HanYi', "HYZhengYuan-65W", "Clear Sans", PingFang SC, Arial, Menlo, Monaco, 'Courier New', monospace;
 }
+*/
+
+
 p {
-    font-family: 'Open Sans',  'HanYi', "Clear Sans", PingFang SC, Arial, Menlo, Monaco, 'Courier New', monospace;
+    font-family: "Open Sans","Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
 }
 strong {
     /* font-size: 16px; */
-    font-family: 'Open Sans',  'HanYi', "JetBrains mono", "HYZhengYuan-65W", "Clear Sans", PingFang SC, Arial, Menlo, Monaco, 'Courier New', monospace;
+    font-family: "Open Sans","Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
 }
 u {
-    font-family: 'Open Sans',  'HanYi', "HYZhengYuan-65W", "Clear Sans", PingFang SC, Arial, Menlo, Monaco, 'Courier New', monospace, "JetBrains mono";
+    font-family: "Open Sans","Clear Sans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
 }
 
 #write 
