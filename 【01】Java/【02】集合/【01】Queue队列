@@ -59,24 +59,184 @@ public interface Queue<E> extends Collection<E> {
 **`Deque` 双端队列**：继承自 Queue
 
 - 具有 FIFO（先进先出） 或者 LIFO（后进先出）原则
+- 出了双端队列外，还新增了栈方法（头部）：`push()`、`pop()`
 
 ```java
 public interface Deque<E> extends Queue<E> {
-    void addFirst(E e);
-    void addLast(E e);
-    boolean offerFirst(E e);
-    boolean offerLast(E e);
-    
-    E removeFirst();
-    E removeLast();
-    E pollFirst();
-    E pollLast();
-    
-    E getFirst();
-    E getLast();
-    E peekFirst();
-    E peekLast();
+  void push(E e);				// addFirst()
+  E pop();							// removeFirst()
+
+  void addFirst(E e);
+  void addLast(E e);
+  boolean offerFirst(E e);
+  boolean offerLast(E e);
+
+  E removeFirst();
+  E removeLast();
+  E pollFirst();
+  E pollLast();
+
+  E getFirst();
+  E getLast();
+  E peekFirst();
+  E peekLast();
 }
 
+```
+
+<br/>
+
+---
+
+<br/>
+
+# BlockingQueue
+
+**`BlockingQueue` 阻塞队列**：
+
+- 新增了阻塞方法（添加到尾部、从头部移除）：`put()`、`take()`
+
+- `drainTo()`：移除所有元素，并将其添加到新的集合中
+
+```java
+public interface BlockingQueue<E> extends Queue<E> {
+  void put(E e) throws InterruptedException;
+  E take() throws InterruptedException;
+  
+  boolean offer(E e, long timeout, TimeUnit unit)
+        throws InterruptedException;
+  E poll(long timeout, TimeUnit unit)
+        throws InterruptedException;
+  
+  int drainTo(Collection<? super E> c, int maxElements);
+}
+```
+
+<br/>
+
+---
+
+<br/>
+
+# ---- 常见实现类
+
+# PriorityBlockingQueue
+
+**`PriorityBlockingQueue` 优先级队列**
+
+```java
+public class PriorityBlockingQueue<E> extends AbstractQueue<E>
+  implements BlockingQueue<E>, java.io.Serializable {
+
+  public PriorityBlockingQueue(int initialCapacity, Comparator<? super E> comparator) {
+    if (initialCapacity < 1)
+      throw new IllegalArgumentException();
+    this.comparator = comparator;															// 比较器（如果比较器是空的，就使用自然排序 Comparable）
+    this.queue = new Object[Math.max(1, initialCapacity)];		// 数组（完全二叉堆/二元堆）
+  }
+  
+  private transient Object[] queue;
+  private transient Comparator<? super E> comparator;
+  
+  private final ReentrantLock lock = new ReentrantLock();			// 阻塞的实现原理
+  private final Condition notEmpty = lock.newCondition();
+  
+  private PriorityQueue<E> q;																	// 序列化用的
+}
+```
+
+<br/>
+
+## 二叉堆
+
+**`二叉堆/二元堆`**：
+
+- n 节点的两个子节点分别是 `2*n+1、2*n+2`
+
+  n 节点的父节点是 `(n-1)>>>1（(n-1)/2）`
+
+  最小非叶子节点是 `<half`
+
+- **完全二叉树**
+
+  `最小堆`：父节点 < 子节点
+
+  `最大堆`：父节点 > 子节点
+
+```java
+private transient Object[] queue;			// 数组（完全二叉堆/二元堆）
+```
+
+插入新元素的时候，是插入到 8 的右边
+
+- **插入尾部（上浮）**：
+
+  插入 2 得到 [3, 5, 10, 8, 2]，通过上浮操作得到 [2, 3, 10, 8, 5]
+
+- **移除头部（下沉）**：
+
+  删除 2 并 "<u>用最后一个元素替换堆顶元素</u>" 得到 [5, 3, 10, 8]，通过下沉操作得到 [3, 5, 10, 8]
+
+```c
+       3
+      / \
+     5   10
+    /
+   8
+```
+
+<br/>
+
+### siftUpComparable()
+
+**`siftUpComparable()` 上浮（插入）**：将元素 x 插入到 k 位置，并通过 "上浮" 调整堆结构（最小堆）
+
+- 原理：插入节点是否 >= 父节点，否则上浮
+- 时间复杂度是 O(logN)
+- 通常用来进行 "插入" 操作（插入尾部）
+
+```java
+private static <T> void siftUpComparable(int k, T x, Object[] es) {
+  Comparable<? super T> key = (Comparable<? super T>) x;
+  while (k > 0) {
+    int parent = (k - 1) >>> 1;						// 父节点
+    Object e = es[parent];
+    if (key.compareTo((T) e) >= 0)				// 插入节点 > 父节点（符合二叉树）
+      break;
+    es[k] = e;
+    k = parent;
+  }
+  es[k] = key;
+}
+```
+
+<br/>
+
+### siftDownUsingComparator()
+
+**`siftDownUsingComparator()` 下沉（比较器，移除）**：将元素 x 插入到 k 位置，并通过 "下沉" 调整堆结构（最小堆）
+
+- 原理：插入节点是否 <= 最小子节点，否则下沉
+- 时间复杂度是 O(logN)
+- 通常用来进行 "移除" 操作（移除头部）
+
+```java
+private static <T> void siftDownUsingComparator(
+  int k, T x, Object[] es, int n, Comparator<? super T> cmp
+) {
+  int half = n >>> 1;							// 最小非叶子节点（可以下沉操作）
+  while (k < half) {							
+    int child = (k << 1) + 1;			// 插入位置的 "左子节点"
+    Object c = es[child];
+    int right = child + 1;				// 插入位置的 "右子节点"
+    if (right < n && cmp.compare((T) c, (T) es[right]) > 0)		// 左子节点 > 右子节点（获取最小值子节点）
+      c = es[child = right];
+    if (cmp.compare(x, (T) c) <= 0)														// 插入节点 < 最小值子节点
+      break;
+    es[k] = c;
+    k = child;
+  }
+  es[k] = x;
+}
 ```
 
