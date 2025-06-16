@@ -114,34 +114,113 @@ public interface BlockingQueue<E> extends Queue<E> {
 
 <br/>
 
+## 阻塞方法
+
+阻塞方法的实现原理是：**`ReentrantLock 和 Condition`**
+
+- `await()` 阻塞
+- `signal()` 唤醒
+
+下面以 ArrayBlockingQueue 为例
+
+<br/>
+
+### put()
+
+**`put()`**：有限队列的 put() 是一个阻塞方法，无限队列的 put() 是一个非阻塞方法
+
+- 当队列满的时候，阻塞
+
+```java
+public void put(E e) throws InterruptedException {
+  Objects.requireNonNull(e);
+  final ReentrantLock lock = this.lock;
+  lock.lockInterruptibly();
+  try {
+    while (count == items.length)
+      notFull.await();				// await()
+    enqueue(e);								// enqueue() 插入到队列尾部
+  } finally {
+    lock.unlock();
+  }
+}
+```
+
+```java
+private void enqueue(E e) {
+  final Object[] items = this.items;
+  items[putIndex] = e;
+  if (++putIndex == items.length) putIndex = 0;
+  count++;
+  notEmpty.signal();					// signal() 唤醒 take() 操作
+}
+```
+
+<br/>
+
+### take()
+
+**`take()`**：无论是有限队列还是无限队列，它们的 take() 方法都是一个阻塞操作
+
+- 当队列空的时候，阻塞
+
+```java
+public E take() throws InterruptedException {
+  final ReentrantLock lock = this.lock;
+  lock.lockInterruptibly();
+  try {
+    while (count == 0)
+      notEmpty.await();					// await()
+    return dequeue();						// dequeue() 取出队列头部元素
+  } finally {
+    lock.unlock();
+  }
+}
+```
+
+```java
+private E dequeue() {
+  final Object[] items = this.items;
+  @SuppressWarnings("unchecked")
+  E e = (E) items[takeIndex];			// takeIndex 可以避免数组的复制
+  items[takeIndex] = null;
+  if (++takeIndex == items.length) takeIndex = 0;
+  count--;
+  if (itrs != null)
+    itrs.elementDequeued();
+  notFull.signal();								// signal()
+  return e;
+}
+```
+
+<br/>
+
 ---
 
 <br/>
 
-# ---- 常见实现类
+# PriorityQueue
 
-# PriorityBlockingQueue
+**`PriorityQueue` 优先级队列**：
 
-**`PriorityBlockingQueue` 优先级队列**
+- 优先级：基于 `比较器 Comparator` 或者 `自然排序 Comparable` 进行排序
+- 队列：基于 `数组（完全二叉树）` 实现
 
 ```java
-public class PriorityBlockingQueue<E> extends AbstractQueue<E>
-  implements BlockingQueue<E>, java.io.Serializable {
+public class PriorityQueue<E> extends AbstractQueue<E>
+  implements java.io.Serializable {
 
-  public PriorityBlockingQueue(int initialCapacity, Comparator<? super E> comparator) {
+  public PriorityQueue(int initialCapacity,
+                       Comparator<? super E> comparator) {
     if (initialCapacity < 1)
       throw new IllegalArgumentException();
-    this.comparator = comparator;															// 比较器（如果比较器是空的，就使用自然排序 Comparable）
-    this.queue = new Object[Math.max(1, initialCapacity)];		// 数组（完全二叉堆/二元堆）
+    this.queue = new Object[initialCapacity];
+    this.comparator = comparator;
   }
   
-  private transient Object[] queue;
-  private transient Comparator<? super E> comparator;
-  
-  private final ReentrantLock lock = new ReentrantLock();			// 阻塞的实现原理
-  private final Condition notEmpty = lock.newCondition();
-  
-  private PriorityQueue<E> q;																	// 序列化用的
+  transient Object[] queue;													// 数组（完全二叉堆/二元堆）
+  private final Comparator<? super E> comparator;		// 比较器（如果比较器是空的，就使用自然排序 Comparable）
+
 }
 ```
 
@@ -149,13 +228,13 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
 
 ## 二叉堆
 
-**`二叉堆/二元堆`**：
+**`二叉堆/二元堆`**：优先级队列的实现原理
 
 - n 节点的两个子节点分别是 `2*n+1、2*n+2`
 
   n 节点的父节点是 `(n-1)>>>1（(n-1)/2）`
 
-  最小非叶子节点是 `<half`
+  最小非叶子节点是 `<half = n>>>1 - 1`
 
 - **完全二叉树**
 
@@ -166,6 +245,10 @@ public class PriorityBlockingQueue<E> extends AbstractQueue<E>
 ```java
 private transient Object[] queue;			// 数组（完全二叉堆/二元堆）
 ```
+
+<br/>
+
+**案例**
 
 插入新元素的时候，是插入到 8 的右边
 
@@ -239,4 +322,204 @@ private static <T> void siftDownUsingComparator(
   es[k] = x;
 }
 ```
+
+<br/>
+
+### heapify()
+
+**`heapify()` 堆化**：将无序的堆，调整为最小堆
+
+```java
+private void heapify() {
+  final Object[] es = queue;
+  int n = size, i = (n >>> 1) - 1;			// 最后一个非叶子节点的索引
+  final Comparator<? super E> cmp;
+  if ((cmp = comparator) == null)
+    for (; i >= 0; i--)									// 将所有非叶子节点，逐个下沉
+      siftDownComparable(i, (E) es[i], es, n);
+  else
+    for (; i >= 0; i--)
+      siftDownUsingComparator(i, (E) es[i], es, n, cmp);
+}
+```
+
+<br/>
+
+### dequeue()
+
+**`dequeue()`**：移除头部元素，并通过 "下沉" 操作重新调整堆结构（是 `poll()/remove()` 的核心方法）
+
+```java
+private E dequeue() {
+  final Object[] es;
+  final E result;
+
+  if ((result = (E) ((es = queue)[0])) != null) {			// 头部元素
+    final int n;
+    final E x = (E) es[(n = --size)];
+    es[n] = null;
+    if (n > 0) {
+      final Comparator<? super E> cmp;
+      if ((cmp = comparator) == null)
+        siftDownComparable(0, x, es, n);							// 用最后一个元素替换堆顶元素
+      else
+        siftDownUsingComparator(0, x, es, n, cmp);
+    }
+  }
+  return result;																			// 返回头部元素
+}
+```
+
+<br/>
+
+---
+
+<br/>
+
+# ---- 常见实现类
+
+# ArrayBlockingQueue
+
+**`ArrayBlockingQueue` 基于数组的阻塞队列**：这是一个 `有限队列`
+
+- 基于数组实现：take 和 put 是基于 index 实现的
+
+```java
+public class ArrayBlockingQueue<E> extends AbstractQueue<E>
+  implements BlockingQueue<E>, java.io.Serializable {
+
+  public ArrayBlockingQueue(int capacity, boolean fair) {
+    if (capacity <= 0)
+      throw new IllegalArgumentException();
+    this.items = new Object[capacity];
+    lock = new ReentrantLock(fair);
+    notEmpty = lock.newCondition();
+    notFull =  lock.newCondition();
+  }
+
+  // 基于数组实现：take 和 put 是基于 index 实现的
+  final Object[] items;
+  int takeIndex;
+  int putIndex;
+}
+```
+
+
+
+# PriorityBlockingQueue
+
+**`PriorityBlockingQueue` 优先级队列**：这是一个 `无限队列`（会自动扩容）
+
+- 优先级队列：类似 PriorityQueue 基于 `完全二叉树 Object[] 和比较器 Comparator` 实现
+- 阻塞队列：类似 BlockingQueue 基于 `ReentrantLock 和 Condition` 实现（await()、signal()）
+
+```java
+public class PriorityBlockingQueue<E> extends AbstractQueue<E>
+  implements BlockingQueue<E>, java.io.Serializable {
+
+  public PriorityBlockingQueue(int initialCapacity, Comparator<? super E> comparator) {
+    if (initialCapacity < 1)
+      throw new IllegalArgumentException();
+    this.comparator = comparator;															// 比较器（如果比较器是空的，就使用自然排序 Comparable）
+    this.queue = new Object[Math.max(1, initialCapacity)];		// 数组（完全二叉堆/二元堆）
+  }
+  
+  private transient Object[] queue;
+  private transient Comparator<? super E> comparator;
+  
+  private final ReentrantLock lock = new ReentrantLock();			// 阻塞的实现原理
+  private final Condition notEmpty = lock.newCondition();
+  
+  private PriorityQueue<E> q;																	// 序列化用的
+}
+```
+
+<br/>
+
+## 阻塞方法
+
+阻塞方法的实现原理是：**`ReentrantLock 和 Condition`**
+
+- `await()` 阻塞
+- `signal()` 唤醒
+
+<br/>
+
+### put()
+
+**`put()`、`offer()`** 都是非阻塞方法：因为这是一个 `无限序列`
+
+- 内部会调用 `signal()` 方法，唤醒 take() 的阻塞操作
+
+```java
+public void put(E e) {
+  offer(e);
+}
+```
+
+```java
+public boolean offer(E e) {
+  if (e == null)
+    throw new NullPointerException();
+  final ReentrantLock lock = this.lock;
+  lock.lock();
+  int n, cap;
+  Object[] es;
+  // 1. 无限队列：超出容量上限，会自动扩容
+  while ((n = size) >= (cap = (es = queue).length))
+    tryGrow(es, cap);
+  // 2. 上浮实现优先级排序
+  try {
+    final Comparator<? super E> cmp;
+    if ((cmp = comparator) == null)
+      siftUpComparable(n, e, es);
+    else
+      siftUpUsingComparator(n, e, es, cmp);
+    size = n + 1;
+    // 3. signal() 唤醒 take() 操作
+    notEmpty.signal();
+  } finally {
+    lock.unlock();
+  }
+  return true;
+}
+```
+
+<br/>
+
+### take()
+
+**`take()`**：是一个阻塞方法，当队列是 null 空的，调用 `await()` 阻塞等待
+
+**`poll()`**：是一个非阻塞方法，当队列是 null 空的，返回 `null`，底层是用 dequeue() 实现的
+
+```java
+public E take() throws InterruptedException {
+  final ReentrantLock lock = this.lock;
+  lock.lockInterruptibly();
+  E result;
+  try {
+    // 如果队列是 null 空的，调用 await() 阻塞等待
+    while ( (result = dequeue()) == null)
+      notEmpty.await();
+  } finally {
+    lock.unlock();
+  }
+  return result;
+}
+```
+
+```java
+public E poll() {
+  final ReentrantLock lock = this.lock;
+  lock.lock();
+  try {
+    return dequeue();
+  } finally {
+    lock.unlock();
+  }
+}
+```
+
+
 
