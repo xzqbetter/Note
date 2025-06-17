@@ -7,19 +7,53 @@
 
 - 具有 FIFO（先进先出） 或者 LIFO（后进先出）原则
 
+<br/>
+
 常见实现类：
 
-`LinkedList`：双向链表结构（双端队列），同时支持 Queue 和 Deque 接口
+1. 基于数组实现：有届队列
 
-`ArrayDeque`：数组结构（双端队列），同时支持 Queue 和 Deque 接口
+   `ArrayDeque`：双端队列（head、tail）
 
-`PriorityQueue`：基于优先级的队列
+   `ArrayBlockingQueue`：阻塞队列（putIndex、takeIndex）
 
-`ConcurrentLinkedQueue`：线程安全的非阻塞队列
+2. 基于链表实现：无界队列、有届队列
 
-`BlockingQueue`：线程安全的阻塞队列，具体实现有 ArrayBlockingQueue、LinkedBlockingQueue
+   `LinkedList`：双端队列（first、last）
+
+   `LinkedBlockingQueue`：阻塞队列（单向链表）
+
+   `LinkedBlockingDeque`：阻塞队列（双向链表）
+
+   `LinkedTransferQueue`：传递队列（transfer）
+
+3. 基于二叉堆/数组实现：无界队列（自动扩容）
+
+   `PriorityQueue`：优先级队列
+
+   `PriorityBlockingQueue`：阻塞队列（take）
+
+   `DelayQueue`：延迟队列
+
+4. 其他
+
+   `TransferQueue`：传递队列（transfer）
+
+   
+
+   
 
 
+
+ConcurrentLinkedQueue
+
+ConcurrentLinkedDeque
+
+
+
+SychoronousQueue
+
+<br/>
 
 # Queue
 
@@ -212,7 +246,7 @@ private E dequeue() {
 **`PriorityQueue` 优先级队列**：
 
 - 优先级：基于 `比较器 Comparator` 或者 `自然排序 Comparable` 进行排序
-- 队列：基于 `数组（完全二叉树）` 实现
+- 队列：基于 `数组（完全二叉堆）` 实现
 
 ```java
 public class PriorityQueue<E> extends AbstractQueue<E>
@@ -284,7 +318,7 @@ private transient Object[] queue;			// 数组（完全二叉堆/二元堆）
 
 - 原理：插入节点是否 >= 父节点，否则上浮
 - 时间复杂度是 O(logN)
-- 通常用来进行 "插入" 操作（插入尾部）
+- 通常用来进行 "`插入`" 操作（插入尾部）
 
 ```java
 private static <T> void siftUpComparable(int k, T x, Object[] es) {
@@ -309,7 +343,7 @@ private static <T> void siftUpComparable(int k, T x, Object[] es) {
 
 - 原理：插入节点是否 <= 最小子节点，否则下沉
 - 时间复杂度是 O(logN)
-- 通常用来进行 "移除" 操作（移除头部）
+- 通常用来进行 "`移除`" 操作（移除头部，然后将最后一个元素放到头部，并做下沉操作）
 
 ```java
 private static <T> void siftDownUsingComparator(
@@ -386,39 +420,181 @@ private E dequeue() {
 
 # ---- 常见实现类（BlockingQueue）
 
-ArrayDeque
+<br/>
 
-ArrayBlockingQueue
+# ArrayDeque
 
+**`ArrayDeque`**：基于数组实现 head、tail
 
+```java
+public class ArrayDeque<E> extends AbstractCollection<E>
+  implements Deque<E>, Cloneable, Serializable
+{
 
-LinkedList
+  public ArrayDeque() {
+    elements = new Object[16 + 1];			// 默认 16 个
+  }
 
-LinkedBlockingQueue
-
-LinkedBlockingDeque
-
-LinkedTransferQueue
-
-
-
-PriorityQueue
-
-PriorityBlockingQueue
-
-
-
-ConcurrentLinkedQueue
-
-ConcurrentLinkedDeque
+  public ArrayDeque(int numElements) {
+    elements =
+      new Object[(numElements < 1) ? 1 :
+                 (numElements == Integer.MAX_VALUE) ? Integer.MAX_VALUE :
+                 numElements + 1];
+  }
 
 
+  transient Object[] elements;
+  transient int head;
+  transient int tail;
+}
+```
 
-SychoronousQueue
+<br/>
 
-TransferQueue
+## offer()
 
-DelayQueue
+**`offer()`**：基于数组实现，添加到数组末尾 tail
+
+```java
+public boolean offer(E e) {
+  return offerLast(e);
+}
+```
+
+```java
+public boolean offerLast(E e) {
+  addLast(e);
+  return true;
+}
+```
+
+```java
+public void addLast(E e) {
+  if (e == null)
+    throw new NullPointerException();
+  final Object[] es = elements;
+  es[tail] = e;
+  if (head == (tail = inc(tail, es.length)))		// head==tail 扩容
+    grow(1);
+}
+
+static final int inc(int i, int modulus) {
+  if (++i >= modulus) i = 0;
+  return i;
+}
+```
+
+<br/>
+
+## poll()
+
+**`poll()`**：基于数组实现，从数组头部取出 head
+
+```java
+public E poll() {
+  return pollFirst();
+}
+```
+
+```java
+public E pollFirst() {
+  final Object[] es;
+  final int h;
+  E e = elementAt(es = elements, h = head);
+  if (e != null) {
+    es[h] = null;
+    head = inc(h, es.length);
+  }
+  return e;
+}
+```
+
+<br/>
+
+---
+
+<br/>
+
+# LinkedList
+
+**`LinkedList / LinkedDeque`**：基于双向链表实现 first、last
+
+```java
+public class LinkedList<E>
+    extends AbstractSequentialList<E>
+    implements List<E>, Deque<E>, Cloneable, java.io.Serializable
+{
+  transient Node<E> first;
+  transient Node<E> last;
+}
+```
+
+<br/>
+
+## offer()
+
+**`offer()`**：基于双向链表实现，添加到链表末尾 last
+
+```java
+public boolean offer(E e) {
+  return add(e);
+}
+```
+
+```java
+public boolean add(E e) {
+  linkLast(e);
+  return true;
+}
+```
+
+```java
+void linkLast(E e) {
+  final Node<E> l = last;
+  final Node<E> newNode = new Node<>(l, e, null);
+  last = newNode;
+  if (l == null)
+    first = newNode;
+  else
+    l.next = newNode;
+  size++;
+  modCount++;
+}
+```
+
+<br/>
+
+## poll()
+
+**`poll()`**：基于双向链表实现，从链表头部移除 first
+
+```java
+public E poll() {
+  final Node<E> f = first;		// first
+  return (f == null) ? null : unlinkFirst(f);
+}
+```
+
+```java
+private E unlinkFirst(Node<E> f) {
+  final E element = f.item;
+  final Node<E> next = f.next;
+  f.item = null;
+  f.next = null; // help GC
+  first = next;
+  if (next == null)
+    last = null;
+  else
+    next.prev = null;
+  size--;
+  modCount++;
+  return element;
+}
+```
+
+<br/>
+
+---
 
 <br/>
 
@@ -1011,7 +1187,7 @@ public E poll() {
 
 # TransferQueue
 
-**`TransferQueue` 传递队列**：<u>将元素" 直接传递" 给等待的消费者，如果没有消费者，会 "阻塞等待"</u>
+**`TransferQueue` 传递队列**：<u>将元素从生产者 "直接传递" 给等待的消费者，如果没有消费者，会 "阻塞等待"</u>
 
 - `transfer()`：将元素" 直接传递" 给等待的消费者
 
@@ -1030,6 +1206,8 @@ public E poll() {
 - `getWaitingConsumerCount()`：获取当前正在等待的消费者数量
 
 - 使用场景：<u>当生产者需要确保消费者接收到数据时</u>，transfer 方法可以保证消息不丢失
+
+**生产者 - 消费者模型**
 
 **`LinkedTransferQueue`**：是 TransferQueue 的唯一实现类，是一个基于 "链表" 的 `无界队列`
 
