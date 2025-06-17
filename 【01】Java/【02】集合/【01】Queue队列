@@ -386,6 +386,42 @@ private E dequeue() {
 
 # ---- 常见实现类（BlockingQueue）
 
+ArrayDeque
+
+ArrayBlockingQueue
+
+
+
+LinkedList
+
+LinkedBlockingQueue
+
+LinkedBlockingDeque
+
+LinkedTransferQueue
+
+
+
+PriorityQueue
+
+PriorityBlockingQueue
+
+
+
+ConcurrentLinkedQueue
+
+ConcurrentLinkedDeque
+
+
+
+SychoronousQueue
+
+TransferQueue
+
+DelayQueue
+
+<br/>
+
 # ArrayBlockingQueue
 
 **`ArrayBlockingQueue` 基于" 数组" 的阻塞队列**：这是一个 `有限队列`
@@ -794,10 +830,354 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
 }
 ```
 
-# DelayedQueue
+<br/>
+
+---
+
+<br/>
+
+# DelayQueue
+
+**`DelayQueue` 延迟队列**：`无界队列`，用来存放实现了 `Delayed` 接口的元素，队列中的元素只有在 `延迟时间到期后` 才能被取出
+
+- `PriorityQueue`：底层是使用 PriorityQueue 实现的，元素按照 "延迟时间" 排序，是一个 "无限队列"
+
+- `ReentrantLock`：实现 “线程安全 + 阻塞” 操作
+
+  put() 是非阻塞操作，`take()` 是阻塞操作
+
+- `Leader-Follower 模式`：用来优化线程等待
+
+- 使用场景：适用于需要延迟调度任务的场景，例如 <u>定时任务，闹钟任务，缓存队列</u> 等等
+
+```java
+public class DelayQueue<E extends Delayed> extends AbstractQueue<E>
+    implements BlockingQueue<E> {
+    
+    // 基于 PriorityQueue 实现
+    private final PriorityQueue<E> q = new PriorityQueue<E>();
+    
+    // 线程安全 + 阻塞
+    private final transient ReentrantLock lock = new ReentrantLock();
+    private final Condition available = lock.newCondition();
+    
+    // Leader-Follower 模式：用来优化线程等待
+    private Thread leader;
+}
+```
+
+<br/>
+
+## Delayed
+
+**`Delayed` 延迟元素**：本身是一个 `Comparable` 接口
+
+- `getDelay()`：返回元素剩余的延迟时间
+- `compareTo(0)`：比较元素的剩余时间
+
+```java
+public interface Delayed extends Comparable<Delayed> {
+    long getDelay(TimeUnit unit);
+}
+```
+
+<br/>
+
+## put()
+
+**`put()`**：非阻塞操作
+
+- `PriorityQueue`：底层是使用 PriorityQueue 实现的，是一个 "无限队列"
+
+- `Leader-Follower 模式`：用来优化多线程系统中线程的等待和唤醒行为（避免不必要的线程等待唤醒和上下文切换，提高多线程系统的效率）
+
+  如果新插入元素是一个头部元素（比队列中的其他元素延迟时间小，或者之前是一个空队列），
+
+  那么之前的 Leader 线程不再适用（等待获取旧的头部元素），
+
+  同时调用 available.signal() 通知之前的线程，当前可能有一个更小延迟时间的元素或者已经到期
+
+```java
+public void put(E e) {
+    offer(e);
+}
+```
+
+```java
+public boolean offer(E e) {
+    final ReentrantLock lock = this.lock;
+    lock.lock();			// 线程安全的
+    try {
+        q.offer(e);		   	       // PriorityQueue：底层是使用 PriorityQueue 实现的
+        if (q.peek() == e) {	// Leader-Follower 模式：优化线程等待
+            leader = null;
+            available.signal();
+        }
+        return true;
+    } finally {
+        lock.unlock();
+    }
+}
+```
+
+<br/>
+
+## take()
+
+**`take()`**：阻塞操作，符合 `Leader-Follower 模式`
+
+1. 如果头部元素=null，当前线程在 available 上无限期等待
+
+2. 如果头部元素延迟时间<=0，直接获取
+
+3. 如果头部元素延迟时间>0，等待
+
+   leader!=null：说明有其他线程（Leader）正在等待获取，当前线程（Follower）在 available 上无限期等待
+
+   leader==null：设置 Leader 为当前线程，等待指定的延迟时间
+
+```java
+public E take() throws InterruptedException {
+    final ReentrantLock lock = this.lock;
+    lock.lockInterruptibly();
+    try {
+        for (;;) {
+            E first = q.peek();
+            
+            // 1. 如果头部元素=null，等待
+            // - 当前线程在 available 上无限期等待
+            if (first == null)				
+                available.await();
+            
+            else {
+                long delay = first.getDelay(NANOSECONDS);
+                // 2. 如果头部元素延迟时间<=0，直接获取
+                if (delay <= 0L)			
+                    return q.poll();
+                
+                 // 3. 如果头部元素延迟时间>0，等待
+                // - leader!=null：说明有其他线程（Leader）正在等待获取，当前线程（Follower）在 available 上无限期等待
+                // - leader==null：设置 Leader 为当前线程，等待指定的延迟时间
+                first = null;
+                if (leader != null)			  
+                    available.await();
+                else {
+                    Thread thisThread = Thread.currentThread();
+                    leader = thisThread;	
+                    try {
+                        available.awaitNanos(delay);
+                    } finally {
+                        // await() 操作被中断了，将 Leader=null，允许其他线程成为 Leader 线程
+                        if (leader == thisThread)
+                            leader = null;
+                    }
+                }
+            }
+        }
+    } finally {
+        if (leader == null && q.peek() != null)
+            available.signal();
+        lock.unlock();
+    }
+}
+```
+
+<BR/>
+
+**`poll()`**：非阻塞方法
+
+- 如果延迟时间 > 0，则返回 null
+
+```JAVA
+public E poll() {
+    final ReentrantLock lock = this.lock;
+    lock.lock();
+    try {
+        E first = q.peek();
+        return (first == null || first.getDelay(NANOSECONDS) > 0)
+            ? null
+            : q.poll();
+    } finally {
+        lock.unlock();
+    }
+}
+```
+
+<BR/>
+
+---
+
+<BR/>
 
 # TransferQueue
 
-TransferQueue
+**`TransferQueue` 传递队列**：<u>将元素" 直接传递" 给等待的消费者，如果没有消费者，会 "阻塞等待"</u>
 
-LinkedTransferQueue
+- `transfer()`：将元素" 直接传递" 给等待的消费者
+
+  生产者通过 transfer() 生成元素，
+
+  消费者通过 take() / poll() 获取元素，元素会直接传递给消费者；
+
+  如果生产者为空，消费者 take() 会阻塞等待，
+
+  如果消费者为空，生产者 transfer() 会阻塞等待，直到有消费者接收
+
+- `tryTransfer()`：尝试将元素传递给消费者，如果没有消费者立即返回 false，元素不会入列
+
+- `hasWaitingConsumer()`：是否有等待接收的消费者 `take() / poll()`
+
+- `getWaitingConsumerCount()`：获取当前正在等待的消费者数量
+
+- 使用场景：<u>当生产者需要确保消费者接收到数据时</u>，transfer 方法可以保证消息不丢失
+
+**`LinkedTransferQueue`**：是 TransferQueue 的唯一实现类，是一个基于 "链表" 的 `无界队列`
+
+- `transfer()`：SYNC 同步阻塞
+
+  如果有消费者（take() / poll()），<u>直接传递给消费者，不入列</u>；
+
+  如果没有消费者，<u>入列等待后续消费（生产生产者节点 Node），同时生产者线程会阻塞，直到有消费者接收</u>；
+
+  适合 "需要确认消费者" 的场景
+
+- `put()`：ASYNC 异步（无界队列）
+
+  如果有消费者（take() / poll()），直接传递给消费者，不入列；
+
+  如果没有消费者，<u>入列等待后续消费（生产生产者节点 Node），生产者线程不会阻塞，立即返回</u>；
+
+  适合 "生产者不关心何时被消费" 的场景
+
+- `take()`：SYNC 同步阻塞
+
+  如果有生产者（transfer() / put()），直接获取生产者节点；
+
+  如果没有生产者，<u>入列等待后续获取（生成消费者节点 Node），同时消费者线程会阻塞，直到有可用元素</u>
+
+- `poll()`：NOW 非阻塞
+
+  如果有生产者（transfer() / put()），直接获取生产者节点；
+
+  如果没有生产者，<u>直接返回 null</u>
+
+- `poll( timeout )`：TIMED 超时
+
+  如果有生产者（transfer() / put()），直接获取生产者节点；
+
+  如果没有生产者，<u>入列等待后续获取（生成消费者节点 Node），同时消费者线程会阻塞，直到有可用元素或超时</u>
+
+> 总结：
+>
+> 生产者：
+>
+> - transfer() 入列阻塞：SYNC 同步
+> - put() / add() 入列非阻塞：ASYNC 异步
+>
+> 消费者：
+>
+> - take() 入列阻塞：SYNC 同步
+> - poll() 不入列非阻塞：NOW 立即
+> - poll( timeout ) 入列阻塞：TIMED 超时
+
+```java
+public interface TransferQueue<E> extends BlockingQueue<E> {
+    void transfer(E e) throws InterruptedException;
+    boolean tryTransfer(E e);
+    boolean tryTransfer(E e, long timeout, TimeUnit unit) throws InterruptedException;	// 有一个超时时间
+    boolean hasWaitingConsumer();
+    int getWaitingConsumerCount();
+}
+```
+
+<BR/>
+
+案例
+
+```java
+public class TransferQueueExample {
+    public static void main(String[] args) {
+        TransferQueue<String> queue = new LinkedTransferQueue<>();
+
+        // 生产者线程
+        new Thread(() -> {
+            try {
+                System.out.println("生产者准备传递消息...");
+                queue.transfer("Hello, Consumer!");
+                System.out.println("生产者已传递消息");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
+
+        // 消费者线程
+        new Thread(() -> {
+            try {
+                Thread.sleep(1000); // 模拟消费者延迟
+                System.out.println("消费者准备接收消息...");
+                String message = queue.take();
+                System.out.println("消费者收到消息: " + message);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+}
+
+// 输出：
+生产者准备传递消息...
+消费者准备接收消息...
+消费者收到消息: Hello, Consumer!
+生产者已传递消息
+```
+
+<BR/>
+
+## transfer()
+
+**`transfer()`**：这里以 LinkedTransferQueue 为例
+
+- 源码比较复杂，待以后分析
+
+```java
+public void transfer(E e) throws InterruptedException {
+    if (xfer(e, true, SYNC, 0L) != null) {
+        Thread.interrupted(); 
+        throw new InterruptedException();
+    }
+}
+```
+
+```JAVA
+private E xfer(E e, boolean haveData, int how, long nanos) {
+    if (haveData && (e == null))
+        throw new NullPointerException();
+
+    restart: for (Node s = null, t = null, h = null;;) {
+        for (Node p = (t != (t = tail) && t.isData == haveData) ? t
+                 : (h = head);; ) {
+            final Node q; final Object item;
+            if (p.isData != haveData
+                && haveData == ((item = p.item) == null)) {
+                if (h == null) h = head;
+                if (p.tryMatch(item, e)) {
+                    if (h != p) skipDeadNodesNearHead(h, p);
+                    return (E) item;
+                }
+            }
+            if ((q = p.next) == null) {
+                if (how == NOW) return e;
+                if (s == null) s = new Node(e);
+                if (!p.casNext(null, s)) continue;
+                if (p != t) casTail(t, s);
+                if (how == ASYNC) return e;
+                return awaitMatch(s, p, e, (how == TIMED), nanos);
+            }
+            if (p == (p = q)) continue restart;
+        }
+    }
+}
+```
+
+
+
