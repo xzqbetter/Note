@@ -994,22 +994,6 @@ private E dequeue() {
 
 ---
 
-<BR/>
-
-# SychronousQueue
-
-**`SychronousQueue` 同步阻塞队列**
-
-```JAVA
-public class SynchronousQueue<E> extends AbstractQueue<E>
-    implements BlockingQueue<E>, java.io.Serializable {
-}
-```
-
-<br/>
-
----
-
 <br/>
 
 # DelayQueue
@@ -1357,5 +1341,38 @@ private E xfer(E e, boolean haveData, int how, long nanos) {
 }
 ```
 
+<br/>
 
+---
+
+<br/>
+
+# SychronousQueue
+
+**`SychronousQueue` 同步阻塞队列**：<u>不存储任何元素，每次插入操作必须等待对应的移除操作，反之依然</u>
+
+- `无容量`：每次 put() 操作必须等待对应的 take() 操作，反之亦然
+
+- `阻塞`：生产者调用 put() 时会阻塞，直到有消费者调用 take()，反之依然
+
+- SychronousQueue 支持两种模式：
+
+  **公平模式（默认）**：`FIFO 先进先出`，内部基于 TransferQueue 队列实现，等待的线程按顺序匹配
+
+  **非公平模式**：`LIFO 后进先出`，内部基于 TransferStack 栈实现，可能导致某些线程等待时间较长
+
+```JAVA
+public class SynchronousQueue<E> extends AbstractQueue<E>
+  implements BlockingQueue<E>, java.io.Serializable {
+
+  public SynchronousQueue() {
+    this(false);
+  }
+  public SynchronousQueue(boolean fair) {
+    transferer = fair ? new TransferQueue<E>() : new TransferStack<E>();
+  }
+}
+```
+
+<br/>
 
